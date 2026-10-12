@@ -57,13 +57,16 @@ export async function textile(c: Corridor): Promise<Quote> {
 export async function dolarapi(casa: "cripto" | "contadoconliqui"): Promise<Quote> {
   const d = await get(`https://dolarapi.com/v1/dolares/${casa}`);
   const rate = (Number(d.compra) + Number(d.venta)) / 2;
-  return { source: `dolarapi-${casa}`, rate, at: Math.floor(Date.parse(d.fechaActualizacion) / 1000) };
+  // Published, not streamed: seen updating at intervals of an hour or more
+  // (12 Oct 2026), so a 15-minute freshness rule dropped the peso anchor
+  // entirely. The outlier and disagreement checks still guard it.
+  return { source: `dolarapi-${casa}`, rate, at: Math.floor(Date.parse(d.fechaActualizacion) / 1000), maxAgeSecs: 3 * 3600 };
 }
 
 /// Live USD/BRL (AwesomeAPI), the mid of bid/ask.
 export async function awesomeBrl(): Promise<Quote> {
   const d = (await get("https://economia.awesomeapi.com.br/json/last/USD-BRL")).USDBRL;
-  return { source: "awesomeapi-usdbrl", rate: (Number(d.bid) + Number(d.ask)) / 2, at: Number(d.timestamp) };
+  return { source: "awesomeapi-usdbrl", rate: (Number(d.bid) + Number(d.ask)) / 2, at: Number(d.timestamp), maxAgeSecs: 3600 };
 }
 
 /// Banco Central do Brasil PTAX for today (or the last business day). Slow —
@@ -79,6 +82,7 @@ export async function ptax(): Promise<Quote> {
     if (v) {
       return {
         source: "bcb-ptax",
+        maxAgeSecs: 6 * 3600,
         rate: (Number(v.cotacaoCompra) + Number(v.cotacaoVenda)) / 2,
         // "2026-10-09 13:07:30.746" is Brasília time (UTC-3).
         at: Math.floor(Date.parse(v.dataHoraCotacao.replace(" ", "T").slice(0, 19) + "-03:00") / 1000),

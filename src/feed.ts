@@ -20,6 +20,7 @@ import { EFFECTS } from "./regime.ts";
 import { collect } from "./sources.ts";
 import { readHalt, readRegimes } from "./state.ts";
 import { alert } from "./alerts.ts";
+import { dashboardData, dashboardHtml } from "./dashboard.ts";
 
 const MAKER = (Deno.env.get("MAKER_ADDRESS") ?? "") as `0x${string}`;
 const PORT = Number(Deno.env.get("FEED_PORT") ?? 8787);
@@ -85,5 +86,12 @@ Deno.serve({ port: PORT }, async (req) => {
     const all = await Promise.all((Object.keys(CORRIDORS) as CorridorId[]).map(price));
     return Response.json({ corridors: all, halt: await readHalt() });
   }
-  return Response.json({ feeds: ["/feed/wars-usdt", "/feed/wbrl-usdt"], status: "/status" }, { status: 404 });
+  if (url.pathname === "/dashboard" || url.pathname === "/") {
+    const all = await Promise.all((Object.keys(CORRIDORS) as CorridorId[]).map(price));
+    return new Response(await dashboardHtml({ corridors: all }), { headers: { "content-type": "text/html; charset=utf-8" } });
+  }
+  if (url.pathname === "/api/dashboard") {
+    return Response.json(await dashboardData(), { headers: { "access-control-allow-origin": "*" } });
+  }
+  return Response.json({ feeds: ["/feed/wars-usdt", "/feed/wbrl-usdt"], status: "/status", dashboard: "/dashboard" }, { status: 404 });
 });

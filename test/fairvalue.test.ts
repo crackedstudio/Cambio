@@ -45,3 +45,11 @@ Deno.test("skew leans toward unloading the heavy side", () => {
   // Capped at 25 bps for a fully one-sided book.
   assertAlmostEquals(skew(1600, 1), 1600 * 1.0025, 1e-9);
 });
+
+Deno.test("a published rate keeps its own, longer freshness window", () => {
+  const fv = fairValue([q("pool", 1604), { source: "cripto", rate: 1606, at: now - 2 * 3600, maxAgeSecs: 3 * 3600 }], now);
+  assert(fv.ok);
+  assertEquals(fv.used.length, 2);
+  // The same age with the default (15 min) is dropped.
+  assertEquals(fairValue([q("pool", 1604), q("cripto", 1606, 2 * 3600)], now).ok, false);
+});

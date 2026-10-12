@@ -1,0 +1,3 @@
+# /etc/sudoers.d/cambio — lets the news agent swap Stitch's config, nothing more.
+# Install: sudo install -m 0440 deploy/sudoers-cambio /etc/sudoers.d/cambio && sudo visudo -c
+cambio ALL=(root) NOPASSWD: /opt/cambio/deploy/apply-stitch-config.sh

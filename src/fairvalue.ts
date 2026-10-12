@@ -15,6 +15,10 @@ export type Quote = {
   rate: number;
   /// Unix seconds when the source last updated.
   at: number;
+  /// How old this source may be before it is ignored. On-chain prices are
+  /// read live, so the default is short; published rates (dolarapi, PTAX)
+  /// update every few minutes to hours and set their own.
+  maxAgeSecs?: number;
 };
 
 export type FairValue =
@@ -32,7 +36,7 @@ export const bpsApart = (a: number, b: number) => (Math.abs(a - b) / ((a + b) / 
 /// not agree. A refusal is the safe answer: the feed then serves nothing,
 /// Stitch's staleness check stops quoting, and no money moves on a guess.
 export function fairValue(quotes: Quote[], now: number, risk = RISK): FairValue {
-  const fresh = quotes.filter((q) => q.rate > 0 && Number.isFinite(q.rate) && now - q.at <= risk.maxSourceAgeSecs);
+  const fresh = quotes.filter((q) => q.rate > 0 && Number.isFinite(q.rate) && now - q.at <= (q.maxAgeSecs ?? risk.maxSourceAgeSecs));
   const stale = quotes.filter((q) => !fresh.includes(q));
   if (fresh.length < risk.minSources) {
     return { ok: false, reason: `only ${fresh.length} fresh source(s)`, used: fresh, dropped: stale };

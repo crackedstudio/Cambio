@@ -120,6 +120,8 @@ deno task ledger --watch        # P&L every 2 minutes
 # per its README (Permit2 approvals first: `stitch approve`, needs a little CELO).
 ```
 
+**Deploying to a server:** follow [deploy/RUNBOOK.md](deploy/RUNBOOK.md), step by step.
+
 Dry runs that spend nothing:
 
 ```bash
@@ -181,5 +183,11 @@ src/news.ts         pays buy over x402, sets the regime, rewrites stitch.toml
 src/stitchconf.ts   renders stitch.toml
 src/ledger.ts       fills, edge, equity, data cost, daily loss halt
 src/state.ts        shared JSON state under state/
-test/               14 tests: orientation, outliers, skew, regimes, config
+src/alerts.ts       Telegram / webhook alerts, sent once per change
+src/dashboard.ts    the public evidence page (/dashboard, /api/dashboard)
+src/attribution.ts  ERC-8021 suffix for this project's own code
+scripts/register-8004.ts   ERC-8004 identity for the maker wallet
+deploy/             systemd units, installer, config-swap script, RUNBOOK.md
+docs/ROADMAP.md     status and what is left · docs/journal.md  daily trading notes
+test/               20 tests
 ```

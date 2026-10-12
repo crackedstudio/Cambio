@@ -5,7 +5,7 @@ Update this file as items move; it is the team's single source of truth.
 
 **Deadline:** Mon **9 Nov 2026, 09:00 GMT** (Agents on Open Rails, Loops House).
 **Tracks:** Open Corridors: **Textile FX** ($750 / $250) · **Build with buy** ($200 × 5).
-**Last updated:** 12 Oct 2026.
+**Last updated:** 12 Oct 2026 (evening). **Server steps:** follow [deploy/RUNBOOK.md](../deploy/RUNBOOK.md).
 
 Legend: ✅ done and verified · 🟡 built, not yet run live · ⬜ not started ·
 👤 needs a team member (keys, money, accounts) · 🤖 can be built in code
@@ -38,12 +38,15 @@ Bounty wording to satisfy literally:
 | News risk agent (buy, x402) | 🟡 built and dry-run on fixtures; **no paid call yet** |
 | Stitch config generator | ✅ built, tested; keys not yet checked against an installed Stitch |
 | P&L ledger + daily loss halt | ✅ built, verified on a real Celo fill (another maker's) |
+| Stitch config matched to Stitch's source (`[rfq]` carried over) | ✅ code · ⬜ 👤 dry-run on the server |
+| Alerts (Telegram / webhook) | ✅ code, tested · ⬜ 👤 bot token + test alert |
+| Reddit as a second paid source | ✅ code · off until `NEWS_SOURCES=x,reddit` |
+| Dashboard (`/dashboard`) | ✅ code, rendered on sample data · ⬜ live URL |
+| Server deployment (systemd, installer, runbook) | ✅ code · ⬜ 👤 run on a VPS |
+| ERC-8004 registration script, attribution encoder | ✅ code, dry-run · ⬜ 👤 key + Loops code |
 | Accounts, wallets, capital | ⬜ 👤 |
-| Stitch installed and enrolled on Celo | ⬜ 👤 |
+| Stitch installed and enrolled on Celo | ⬜ 👤 (`stitch connect`) |
 | Live quoting | ⬜ |
-| Dashboard | ⬜ 🤖 |
-| Hosting (VPS, process supervision) | ⬜ 👤🤖 |
-| ERC-8004 identity, attribution | ⬜ 👤🤖 |
 | Demo video, submission | ⬜ 👤 |
 
 ---
@@ -74,6 +77,40 @@ Bounty wording to satisfy literally:
 ### Tests
 - `deno task check` → 14 passing: price orientation, outliers, refusals, skew direction and cap, regime thresholds, repost dedupe, cool-off, config amounts, post parsing.
 
+### Built for the server side (12 Oct, evening)
+
+Everything the 🤖 items in Phases 1–4 need, in code — what remains of them is
+running it on the server with the team's keys:
+
+- **1.2** `deploy/`: systemd units for feed, news and ledger (restart on crash,
+  start on boot, read-only filesystem, dependencies from a pre-filled cache,
+  frozen lockfile) and `install.sh`.
+- **1.3** Config checked against Stitch's source (textile-stitch @ 29f006e).
+  Fixed: **`[rfq]` is now carried over** — a new bot quotes Swap only over RFQ
+  and `stitch connect` writes that table into stitch.toml, so regenerating
+  without it would have quoted nothing. Celo reactor `0xa9AA…35b3` confirmed
+  from Stitch's own Celo template.
+- **1.4** `deploy/apply-stitch-config.sh` + one sudo rule: installs the new
+  config and restarts Stitch; refuses a file without `[rfq]`.
+- **1.5** Corrected: the shadow test is **`stitch --config … --dry-run`**, not
+  "lean shadow" (that is Stitch's own inventory-lean feature, which we leave
+  off — Cambio already skews in the feed, and two skews would double up).
+- **2.5** `src/alerts.ts`: feed down/up, regime change, loss halt; sent once per
+  change (a first version would have missed "quoting again" after a flap —
+  caught by a test). `deno task alert-test`.
+- **3.4** `NEWS_SOURCES=x,reddit` adds `reddit.posts.search`; each paid call
+  logged on its own line, then one decision line.
+- **4.1** `src/dashboard.ts` at `/dashboard`: net P&L, volume, edge, data paid,
+  equity curve, live feeds, regime changes with the posts behind them, fills
+  and paid-call receipts linked to Celoscan. No libraries; phone and desktop.
+- **4.2** `scripts/register-8004.ts` (`--dry-run` prints, sends nothing; refuses
+  to send untagged). **4.3** `src/attribution.ts`, pinned to Loops' own bytes.
+- **2.4** `docs/journal.md` template.
+- Found while testing: Argentina's published rates update about hourly, so a
+  15-minute freshness rule had dropped the peso anchor; each source now has
+  its own freshness window (on-chain 15 min, dolarapi 3 h, PTAX 6 h).
+- 20 tests.
+
 ### Facts established (each would have cost money)
 1. wARS tracks the **crypto/CCL dollar (~1,605)**, not the official rate (~1,512) — 6% apart.
 2. Stitch's feed price is **debt per collateral** (≈0.000623), not 1,602.
@@ -99,10 +136,10 @@ Bounty wording to satisfy literally:
 | # | Task | Owner | Done when |
 |---|---|---|---|
 | 1.1 | Rent a small VPS (always on); install Deno and Stitch | 👤 | `deno --version`, `stitch --version` on the box |
-| 1.2 | Run `deno task feed` on the VPS behind a process supervisor (systemd) | 🤖 unit files + 👤 install | `/status` reachable from Stitch; restarts on crash |
-| 1.3 | **Check Stitch's TOML keys** against the installed version's `stitch.example.toml`; fix `src/stitchconf.ts` if any differ | 🤖 | Stitch starts with our generated config and logs no unknown keys |
-| 1.4 | Set `STITCH_RESTART_CMD` (e.g. `systemctl restart stitch`) | 👤 | A forced regime change restarts Stitch |
-| 1.5 | Run Stitch in **lean shadow** on wARS; compare its intended quotes with `/status` for 24h | 👤 + 🤖 | Quotes sit at fair ± offset; no inverted prices |
+| 1.2 | ✅ code · Run `deno task feed` on the VPS behind a process supervisor (systemd) | 🤖 unit files + 👤 install | `/status` reachable from Stitch; restarts on crash |
+| 1.3 | ✅ code · **Check Stitch's TOML keys** against the installed version's `stitch.example.toml`; fix `src/stitchconf.ts` if any differ | 🤖 | Stitch starts with our generated config and logs no unknown keys |
+| 1.4 | ✅ code · Set `STITCH_RESTART_CMD` (e.g. `systemctl restart stitch`) | 👤 | A forced regime change restarts Stitch |
+| 1.5 | Run Stitch with **`--dry-run`** on wARS; compare its intended quotes with `/status` for 24h | 👤 + 🤖 | Quotes sit at fair ± offset; no inverted prices |
 | 1.6 | First **real paid buy call** (`deno task news --once`) | 👤 | A line in `state/spend.jsonl` with a receipt tx hash on Celoscan |
 
 ### Phase 2 — live, small · target **22 Oct**
@@ -113,7 +150,7 @@ Bounty wording to satisfy literally:
 | 2.2 | Go live on **wARS only**, wide spread (30 bps), caps as in `src/config.ts` | 👤 | First fill appears in `state/pnl.json` |
 | 2.3 | Run `deno task ledger --watch` and `deno task news` under systemd | 🤖 + 👤 | Both survive a reboot |
 | 2.4 | Daily check: edge per fill, adverse fills, data cost vs spread earned | 👤 | Notes in `docs/journal.md` |
-| 2.5 | Alerting: message the team when the feed 503s, the regime changes, or the loss halt trips | 🤖 | A test alert received |
+| 2.5 | ✅ code · Alerting: message the team when the feed 503s, the regime changes, or the loss halt trips | 🤖 | A test alert received |
 
 ### Phase 3 — tune and widen · target **31 Oct**
 
@@ -122,16 +159,16 @@ Bounty wording to satisfy literally:
 | 3.1 | Tighten the spread step by step (30 → 20 → 15 bps) while edge stays positive | 👤 | Journal shows each step and its effect |
 | 3.2 | Add **wBRL** live (approvals, then quoting) | 👤 | wBRL fills in the ledger |
 | 3.3 | Tune news weights and thresholds from `spend.jsonl` vs the fills that followed | 🤖 | Changes justified by logged data, committed with the evidence |
-| 3.4 | Add **Reddit search** (`reddit.posts.search`, $0.005) as a second paid source if X alone misses events | 🤖 | Second capability in the spend log |
+| 3.4 | ✅ code · Add **Reddit search** (`reddit.posts.search`, $0.005) as a second paid source if X alone misses events | 🤖 | Second capability in the spend log |
 | 3.5 | Optional: a short model classifier for the ambiguous middle scores, keyword scorer kept as the floor | 🤖 | Only if 3.3 shows keyword misses |
 
 ### Phase 4 — evidence and submission · target **7 Nov** (2 days' margin)
 
 | # | Task | Owner | Done when |
 |---|---|---|---|
-| 4.1 | **Dashboard**: public page from `state/pnl.json` + `spend.jsonl` — volume quoted and filled, edge, equity curve, data cost, regime timeline with the posts that caused each change | 🤖 | Live URL |
-| 4.2 | Register an **ERC-8004 identity** for the maker wallet | 🤖 script + 👤 key | Agent id on 8004scan |
-| 4.3 | Attribution: tag every transaction Cambio sends itself with the team's Loops code; document what cannot be tagged (x402 settlements, Stitch's own txs) | 🤖 | Tag decodes on a sent tx |
+| 4.1 | ✅ code · **Dashboard**: public page from `state/pnl.json` + `spend.jsonl` — volume quoted and filled, edge, equity curve, data cost, regime timeline with the posts that caused each change | 🤖 | Live URL |
+| 4.2 | ✅ script · Register an **ERC-8004 identity** for the maker wallet | 🤖 script + 👤 key | Agent id on 8004scan |
+| 4.3 | ✅ encoder · Attribution: tag every transaction Cambio sends itself with the team's Loops code; document what cannot be tagged (x402 settlements, Stitch's own txs) | 🤖 | Tag decodes on a sent tx |
 | 4.4 | Demo video (~2 min): the problem (the −$0.18 fill), the feed, a regime change from real posts, the ledger | 👤 | YouTube/Loom link |
 | 4.5 | Screenshots of the dashboard and `/status` | 👤 | Files in `docs/screenshots/` |
 | 4.6 | Submission: `loops project create` with description, repo, demo, screenshots, maker wallet, both bounty ids — **shown to the team before `--confirm`** | 👤 | Project visible on Loops |
@@ -146,7 +183,7 @@ Bounty ids for 4.6: Textile FX 1st `f47e6f01-94c0-467b-afb9-8c004f0bae13`, 2nd `
 | Item | Amount | Notes |
 |---|---|---|
 | Maker inventory | ~$300 | At risk; daily loss halt at $15 |
-| Gas | ~0.5 CELO (~$0.05) | Approvals; takers pay fill gas |
+| Gas | ~0.5–1 CELO (~$0.10) | Approvals; takers pay fill gas. Stitch's 5-CELO default reserve applies only when CELO itself is quoted, which Cambio does not |
 | News data (buy) | ≤ $1.50/day | Capped in `.env`; ~$40 to the deadline at the cap |
 | VPS | ~$5–10/month | Any always-on box |
 

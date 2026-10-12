@@ -168,6 +168,8 @@ async function run() {
   };
   await writeJson("ledger.json", st);
   await writeJson("pnl.json", pnl);
+  // One point per run for the dashboard's equity curve.
+  await Deno.writeTextFile("state/equity.jsonl", JSON.stringify({ at: pnl.asOf, equityUsd: pnl.equityUsd, totalPnlUsd: pnl.totalPnlUsd }) + "\n", { append: true });
   console.log(JSON.stringify({ ...pnl, recentFills: pnl.recentFills.length }));
 }
 

@@ -1,0 +1,27 @@
+# Cambio — price feed for Stitch, and the dashboard.
+# Installed by deploy/install.sh; runs as the unprivileged user "cambio".
+[Unit]
+Description=Cambio feed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cambio
+WorkingDirectory=/opt/cambio
+# Settings, plus the news payer's key (a few dollars). The MAKER key is never here:
+# it belongs to Stitch alone (/etc/stitch-bot/stitch.key).
+EnvironmentFile=/opt/cambio/.env
+# Dependencies were cached by install.sh; run from that cache, never fetch,
+# never rewrite the lockfile.
+Environment=DENO_DIR=/opt/cambio/.deno
+ExecStart=/usr/local/bin/deno run --cached-only --frozen --allow-net --allow-env --allow-read=state --allow-write=state src/feed.ts
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/cambio/state
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

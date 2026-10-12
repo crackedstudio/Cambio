@@ -4,3 +4,4 @@ state/*
 stitch/stitch.toml
 stitch/stitch.env
 node_modules/
+.deno/

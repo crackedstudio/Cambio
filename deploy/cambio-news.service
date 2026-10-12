@@ -1,0 +1,28 @@
+# Cambio — news risk agent (pays the buy gateway over x402).
+# Installed by deploy/install.sh; runs as the unprivileged user "cambio".
+[Unit]
+Description=Cambio news
+After=network-online.target
+Wants=network-online.target
+After=cambio-feed.service
+
+[Service]
+Type=simple
+User=cambio
+WorkingDirectory=/opt/cambio
+# Settings, plus the news payer's key (a few dollars). The MAKER key is never here:
+# it belongs to Stitch alone (/etc/stitch-bot/stitch.key).
+EnvironmentFile=/opt/cambio/.env
+# Dependencies were cached by install.sh; run from that cache, never fetch,
+# never rewrite the lockfile.
+Environment=DENO_DIR=/opt/cambio/.deno
+ExecStart=/usr/local/bin/deno run --cached-only --frozen --allow-net --allow-env --allow-read --allow-write=state,stitch --allow-run=sh,sudo src/news.ts
+Restart=always
+RestartSec=5
+NoNewPrivileges=no
+ProtectSystem=strict
+ReadWritePaths=/opt/cambio/state /opt/cambio/stitch
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
