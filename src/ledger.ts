@@ -22,6 +22,7 @@
 import { createPublicClient, http, parseAbi, parseAbiItem } from "viem";
 import { CORRIDORS, type Corridor, RISK, RPC, TEXTILE, UNISWAP_QUOTER, USDT } from "./config.ts";
 import { readJson, readSpend, writeJson } from "./state.ts";
+import { alert } from "./alerts.ts";
 
 const pub = createPublicClient({ transport: http(RPC) });
 const MAKER = (Deno.env.get("MAKER_ADDRESS") ?? "").toLowerCase() as `0x${string}`;
@@ -149,6 +150,7 @@ async function run() {
   if (dayPnl < -RISK.dailyLossLimitUsd) {
     const midnight = Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000) + 86_400;
     await writeJson("halt.json", { haltedUntil: midnight, reason: `day P&L ${dayPnl.toFixed(2)} below -${RISK.dailyLossLimitUsd}` });
+    await alert("halt", `halt:${day}`, "tripped", `daily loss limit hit (P&L ${dayPnl.toFixed(2)} USD). Quoting stopped until 00:00 UTC.`);
   }
 
   const pnl = {

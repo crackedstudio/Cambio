@@ -20,8 +20,23 @@ import { CORRIDORS, type CorridorId } from "./config.ts";
 import { next, type Regime, regimeOf, type RegimeState, score } from "./regime.ts";
 import { appendSpend, readRegimes, readSpend, writeJson } from "./state.ts";
 import { renderStitch } from "./stitchconf.ts";
+import { alert } from "./alerts.ts";
 
-const GATEWAY = "https://gateway.usebuy.ai/v1/social/x/posts/search";
+/// Paid sources on the buy gateway, both $0.005 a call (read from each 402).
+/// X is on by default; Reddit joins with NEWS_SOURCES=x,reddit (roadmap 3.4).
+type Source = { capability: string; url: string; body: (id: CorridorId) => Record<string, unknown> };
+const SOURCES: Record<string, Source> = {
+  x: {
+    capability: "x.posts.search",
+    url: "https://gateway.usebuy.ai/v1/social/x/posts/search",
+    body: (id) => ({ query: QUERIES[id], type: "latest" }),
+  },
+  reddit: {
+    capability: "reddit.posts.search",
+    url: "https://gateway.usebuy.ai/v1/social/reddit/posts/search",
+    body: (id) => ({ query: REDDIT_QUERIES[id], type: "post", sort: "new", timeRange: "hour" }),
+  },
+};
 const ASSETS: Record<string, string> = {
   USAT: "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771",
   USDT: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
@@ -34,6 +49,14 @@ const QUERIES: Record<CorridorId, string> = {
   "wars-usdt": "(devaluación OR \"corrida cambiaria\" OR cepo OR \"dólar blue\" OR BCRA OR \"feriado cambiario\") lang:es within_time:1h",
   "wbrl-usdt": "(\"dólar dispara\" OR \"intervenção cambial\" OR Copom OR \"real desvaloriza\" OR \"leilão de dólar\") lang:pt within_time:1h",
 };
+
+/// Reddit search takes plain words, not X operators.
+const REDDIT_QUERIES: Record<CorridorId, string> = {
+  "wars-usdt": "devaluación dólar BCRA cepo",
+  "wbrl-usdt": "dólar real Copom câmbio",
+};
+
+const enabledSources = (Deno.env.get("NEWS_SOURCES") ?? "x").split(",").map((x) => x.trim()).filter((x) => SOURCES[x]);
 
 /// Minutes between polls, by the worst regime currently in force.
 const INTERVAL_MINS: Record<Regime, number> = { calm: 20, elevated: 5, shock: 5 };
@@ -88,15 +111,15 @@ async function spentToday(): Promise<number> {
   return (await readSpend()).filter((e) => String(e.at).startsWith(day)).reduce((s, e) => s + Number(e.usd ?? 0), 0);
 }
 
-async function readPosts(id: CorridorId, pay: typeof fetch | null): Promise<{ posts: string[]; receipt: unknown }> {
+async function readPosts(id: CorridorId, src: Source, pay: typeof fetch | null): Promise<{ posts: string[]; receipt: unknown }> {
   if (fixture) {
     const f = JSON.parse(await Deno.readTextFile(fixture));
     return { posts: postTexts(f[id] ?? f), receipt: null };
   }
-  const res = await pay!(GATEWAY, {
+  const res = await pay!(src.url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query: QUERIES[id], type: "latest" }),
+    body: JSON.stringify(src.body(id)),
   });
   const hdr = res.headers.get("PAYMENT-RESPONSE") ?? res.headers.get("X-PAYMENT-RESPONSE");
   const body = await res.json().catch(() => null);
@@ -110,33 +133,57 @@ async function poll(pay: typeof fetch | null): Promise<Regime> {
   let changed = false;
 
   for (const id of Object.keys(CORRIDORS) as CorridorId[]) {
-    if (!fixture && (await spentToday()) + maxPerCall > dailyBudget) {
-      console.error(`daily budget $${dailyBudget} reached; holding ${id} at its current regime`);
-      continue;
+    // Every enabled source for this corridor, each paid and logged on its
+    // own; the posts are scored together. Fixtures read once.
+    const posts: string[] = [];
+    const paid: Array<{ capability: string; usd: number; receipt: unknown }> = [];
+    let failed = false;
+    for (const name of fixture ? ["x"] : enabledSources) {
+      if (!fixture && (await spentToday()) + maxPerCall > dailyBudget) {
+        console.error(`daily budget $${dailyBudget} reached; skipping ${name} for ${id}`);
+        failed = true;
+        continue;
+      }
+      try {
+        const r = await readPosts(id, SOURCES[name], pay);
+        posts.push(...r.posts);
+        paid.push({ capability: fixture ? "fixture (unpaid)" : SOURCES[name].capability, usd: fixture ? 0 : lastQuotedUsd, receipt: r.receipt });
+      } catch (e) {
+        console.error(`${id} ${name}: ${(e as Error).message}`);
+        failed = true;
+      }
     }
-    let posts: string[], receipt: unknown;
-    try {
-      ({ posts, receipt } = await readPosts(id, pay));
-    } catch (e) {
-      // No news is not good news: a failed read leaves the regime where it
-      // was rather than relaxing it.
-      console.error(`${id}: ${(e as Error).message}`);
-      continue;
-    }
+    // No news is not good news: with nothing read, the regime stays where it
+    // was rather than relaxing. A partial read can still raise it.
+    if (!paid.length) continue;
     const s = score(id, posts);
     const reading = regimeOf(s.score);
     const prev: RegimeState = regimes[id] ?? { regime: "calm", since: now, lastConfirmed: now };
-    const nextState = next(prev, reading, now);
+    // A partial read may raise the regime but never lower it: the source that
+    // failed might be the one that saw the news.
+    const rank = { calm: 0, elevated: 1, shock: 2 } as const;
+    const nextState = failed && rank[reading] < rank[prev.regime] ? prev : next(prev, reading, now);
     if (nextState.regime !== prev.regime) changed = true;
     regimes[id] = nextState;
 
+    // One line per paid call — the demand the buy judges count — then one
+    // "decision" line saying what those calls changed.
+    for (const call of paid) {
+      await appendSpend({
+        at: new Date().toISOString(),
+        corridor: id,
+        capability: call.capability,
+        usd: call.usd,
+        asset: fixture ? null : asset,
+        receipt: call.receipt,
+      });
+    }
     await appendSpend({
       at: new Date().toISOString(),
       corridor: id,
-      capability: fixture ? "fixture (unpaid)" : "x.posts.search",
-      usd: fixture ? 0 : lastQuotedUsd,
-      asset: fixture ? null : asset,
-      receipt,
+      kind: "decision",
+      usd: 0,
+      sources: paid.map((c) => c.capability),
       posts: posts.length,
       score: s.score,
       topHits: s.hits.slice(0, 5),
@@ -145,6 +192,10 @@ async function poll(pay: typeof fetch | null): Promise<Regime> {
       changedQuoting: nextState.regime !== prev.regime,
     });
     console.log(`${id}: ${posts.length} posts, score ${s.score} → reading ${reading}, regime ${nextState.regime}`);
+    if (nextState.regime !== prev.regime) {
+      await alert("regime", `regime:${id}`, nextState.regime,
+        `${id}: regime ${prev.regime} → ${nextState.regime} (score ${s.score}; e.g. "${s.hits[0]?.post.slice(0, 90) ?? "—"}")`);
+    }
   }
 
   await writeJson("regime.json", regimes);
@@ -152,7 +203,8 @@ async function poll(pay: typeof fetch | null): Promise<Regime> {
   const missing = await Deno.stat("stitch/stitch.toml").then(() => false, () => true);
   if (changed || missing) {
     const flat = Object.fromEntries(Object.entries(regimes).map(([k, v]) => [k, v!.regime]));
-    await Deno.writeTextFile("stitch/stitch.toml", renderStitch(flat, feedBase));
+    const existing = await Deno.readTextFile("stitch/stitch.toml").catch(() => "");
+    await Deno.writeTextFile("stitch/stitch.toml", renderStitch(flat, feedBase, existing));
     const cmd = (Deno.env.get("STITCH_RESTART_CMD") ?? "").trim();
     if (cmd) {
       const out = await new Deno.Command("sh", { args: ["-c", cmd] }).output();

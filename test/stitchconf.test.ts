@@ -1,4 +1,4 @@
-import { assert, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { renderStitch } from "../src/stitchconf.ts";
 
 Deno.test("one pool per corridor, each on its own feed URL", () => {
@@ -23,4 +23,34 @@ Deno.test("18dp amounts are exact integers", () => {
   // 120,000 wARS at 18dp.
   assertStringIncludes(t, 'sell_total_liquidity_collateral = "120000000000000000000000"');
   assert(!/e\+/.test(t), "no scientific notation in atomic amounts");
+});
+
+Deno.test("[rfq], [signer] and [gas] written by Stitch survive a regeneration", () => {
+  const before = renderStitch({}, "x") + `
+[rfq]
+enabled = true
+url = "wss://api.textilecredit.com/v2/maker/stream"
+maker_id = "mk_abc"
+api_key_env = "STITCH_RFQ_API_KEY"
+validation_contract = "0x00000000000000000000000000000000000000aa"
+
+[signer]
+provider = "local"
+
+[gas]
+native_reserve = 1.0
+`;
+  const after = renderStitch({ "wars-usdt": "elevated" }, "x", before);
+  assertStringIncludes(after, 'maker_id = "mk_abc"');
+  assertStringIncludes(after, "enabled = true");
+  assertStringIncludes(after, 'provider = "local"');
+  assertStringIncludes(after, "native_reserve = 1.0");
+  assertStringIncludes(after, "buy_offset_bps = 45");
+  // Carried once, not duplicated by a second regeneration.
+  const again = renderStitch({}, "x", after);
+  assertEquals(again.split("[rfq]").length - 1, 1);
+});
+
+Deno.test("without [rfq] the file says how to enrol", () => {
+  assertStringIncludes(renderStitch({}, "x"), "stitch connect");
 });

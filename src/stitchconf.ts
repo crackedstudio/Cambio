@@ -5,9 +5,17 @@
 /// run STITCH_RESTART_CMD (e.g. `systemctl restart stitch`). `shock` needs
 /// neither — the feed withholds the price and Stitch stops on its own.
 ///
-/// Field names follow textile-stitch's stitch.example.toml. Check them against
-/// the version you install before going live; a misspelt key is silently
-/// ignored by most TOML readers, which here would mean quoting at a default.
+/// Field names checked against textile-stitch @ 29f006e (9 Oct 2026):
+/// stitch.example.toml, src/config.rs, and the Celo template in
+/// src/panel/corridors.rs — which is also where `reactor = 0xa9AA…35b3` for
+/// Celo is confirmed, the contract `ledger.ts` watches.
+///
+/// **Tables Cambio does not own are carried over, verbatim.** `stitch connect`
+/// writes `[rfq]` (maker id, stream, validation contract) into this file; a new
+/// bot quotes Swap ONLY over RFQ, so a regenerated file without it would start,
+/// log nothing alarming, and quote nothing. `[signer]` and `[gas]` are the
+/// operator's too. `preservedTables` lifts them out of the current file and
+/// they are appended unchanged.
 
 import { CORRIDORS, type CorridorId, RPC, TEXTILE, USDT } from "./config.ts";
 import { EFFECTS, type Regime } from "./regime.ts";
@@ -15,7 +23,22 @@ import { EFFECTS, type Regime } from "./regime.ts";
 const atomic = (amount: number, decimals: number) =>
   BigInt(Math.floor(amount * 10 ** Math.min(decimals, 6))) * 10n ** BigInt(Math.max(0, decimals - 6));
 
-export function renderStitch(regimes: Partial<Record<CorridorId, Regime>>, feedBase: string): string {
+/// The text of every `[rfq]`, `[signer]` or `[gas]` table (and their
+/// sub-tables) in an existing stitch.toml, in order. Everything from such a
+/// header up to the next table header that is not one of them.
+export function preservedTables(existing: string): string {
+  const keep = /^\[(rfq|signer|gas)(\.[^\]]*)?\]\s*$/;
+  const header = /^\[\[?[^\]]+\]\]?\s*$/;
+  const out: string[] = [];
+  let on = false;
+  for (const line of existing.split("\n")) {
+    if (header.test(line.trim())) on = keep.test(line.trim());
+    if (on) out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
+export function renderStitch(regimes: Partial<Record<CorridorId, Regime>>, feedBase: string, existing = ""): string {
   const pools = (Object.keys(CORRIDORS) as CorridorId[]).map((id) => {
     const c = CORRIDORS[id];
     const fx = EFFECTS[regimes[id] ?? "calm"];
@@ -42,6 +65,11 @@ sell_offset_bps = ${offset}
 sell_total_liquidity_collateral = "${sellCap}"
 sell_min_slice_debt = "${atomic(1, USDT.decimals)}"
 sell_max_orders = 10
+
+# As Stitch's Celo template. RFQ quotes carry Textile's own lifetime; these
+# only govern a public ladder, which book_enabled = false leaves off.
+ttl_secs = 60
+refresh_threshold_bps = 0
 `;
   });
 
@@ -59,5 +87,10 @@ book_enabled = false
 # Short on purpose: when the feed withholds a price (sources disagree, a news
 # shock, the daily loss limit), quotes must lapse within seconds.
 staleness_secs = 20
-${pools.join("")}`;
+${pools.join("")}${(() => {
+    const kept = preservedTables(existing);
+    return kept
+      ? `\n# ---- Carried over from the previous stitch.toml (written by \`stitch connect\` / the operator).\n${kept}\n`
+      : `\n# No [rfq] table yet: run \`stitch connect --config <this file>\` once to enrol the maker.\n# Until then Stitch starts but serves no Swap quotes.\n`;
+  })()}`;
 }

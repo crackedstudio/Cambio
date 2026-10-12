@@ -19,6 +19,7 @@ import { inventory } from "./inventory.ts";
 import { EFFECTS } from "./regime.ts";
 import { collect } from "./sources.ts";
 import { readHalt, readRegimes } from "./state.ts";
+import { alert } from "./alerts.ts";
 
 const MAKER = (Deno.env.get("MAKER_ADDRESS") ?? "") as `0x${string}`;
 const PORT = Number(Deno.env.get("FEED_PORT") ?? 8787);
@@ -62,6 +63,11 @@ async function price(id: CorridorId) {
   }
   body = { ...body, publish, reason };
   cache.set(id, { at: Date.now(), body });
+  // Once per transition, not per poll (alerts.ts de-duplicates on the value).
+  void alert(
+    publish ? "feed-up" : "feed-down", `feed:${id}`, publish ? "up" : `down:${reason}`,
+    publish ? `${id}: quoting again` : `${id}: feed withholding price — ${reason}. Stitch stops quoting within staleness_secs.`,
+  ).catch(() => {});
   return body;
 }
 

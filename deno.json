@@ -3,7 +3,8 @@
     "feed": "deno run --allow-net --allow-env --allow-read=state --allow-write=state --env-file=.env src/feed.ts",
     "news": "deno run --allow-net --allow-env --allow-read --allow-write=state,stitch --allow-run --env-file=.env src/news.ts",
     "ledger": "deno run --allow-net --allow-env --allow-read=state --allow-write=state --env-file=.env src/ledger.ts",
-    "check": "deno check src/*.ts && deno test --allow-read test/"
+    "alert-test": "deno run --allow-net --allow-env --allow-read=state --allow-write=state --env-file=.env src/alerts.ts",
+    "check": "deno check src/*.ts && deno test --allow-read --allow-write --allow-env test/"
   },
   "imports": {
     "viem": "npm:viem@2",
