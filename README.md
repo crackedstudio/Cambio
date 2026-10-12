@@ -8,6 +8,8 @@ stepping back before a peso shock, instead of being picked off by it.
 Built for the Agents on Open Rails hackathon (Loops House × Celo):
 **Open Corridors: Textile FX** and **Build with buy**.
 
+**Where we are and what is left:** [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## The problem
 
 Pesos and reais move on news — central-bank announcements, capital-control
