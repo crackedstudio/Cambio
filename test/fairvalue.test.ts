@@ -53,3 +53,10 @@ Deno.test("a published rate keeps its own, longer freshness window", () => {
   // The same age with the default (15 min) is dropped.
   assertEquals(fairValue([q("pool", 1604), q("cripto", 1606, 2 * 3600)], now).ok, false);
 });
+
+Deno.test("only Argentina's published rates get the longer window", async () => {
+  const src = await Deno.readTextFile(new URL("../src/sources.ts", import.meta.url));
+  const withWindow = [...src.matchAll(/maxAgeSecs:/g)].length;
+  // dolarapi alone sets one; Brazil's sources use the 15-minute default.
+  assertEquals(withWindow, 1);
+});

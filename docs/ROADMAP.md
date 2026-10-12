@@ -108,7 +108,8 @@ running it on the server with the team's keys:
 - **2.4** `docs/journal.md` template.
 - Found while testing: Argentina's published rates update about hourly, so a
   15-minute freshness rule had dropped the peso anchor; each source now has
-  its own freshness window (on-chain 15 min, dolarapi 3 h, PTAX 6 h).
+  a 3-hour window — **Argentina's published rates only**; every other source,
+  Brazil's included, keeps 15 minutes.
 - 20 tests.
 
 ### Facts established (each would have cost money)

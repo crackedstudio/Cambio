@@ -66,12 +66,14 @@ export async function dolarapi(casa: "cripto" | "contadoconliqui"): Promise<Quot
 /// Live USD/BRL (AwesomeAPI), the mid of bid/ask.
 export async function awesomeBrl(): Promise<Quote> {
   const d = (await get("https://economia.awesomeapi.com.br/json/last/USD-BRL")).USDBRL;
-  return { source: "awesomeapi-usdbrl", rate: (Number(d.bid) + Number(d.ask)) / 2, at: Number(d.timestamp), maxAgeSecs: 3600 };
+  return { source: "awesomeapi-usdbrl", rate: (Number(d.bid) + Number(d.ask)) / 2, at: Number(d.timestamp) };
 }
 
 /// Banco Central do Brasil PTAX for today (or the last business day). Slow —
-/// published a few times a day — so it carries the "where is the real
-/// anchored" vote, and the freshness rule drops it when it is old.
+/// published a few times a day — so under the standard 15-minute rule it
+/// votes only just after publication. Deliberate: the longer window is for
+/// Argentina's published rates alone (see `dolarapi`), where the anchor is
+/// otherwise lost; wBRL keeps two live on-chain sources without it.
 export async function ptax(): Promise<Quote> {
   for (let back = 0; back < 5; back++) {
     const d = new Date(Date.now() - back * 86_400_000);
@@ -82,7 +84,6 @@ export async function ptax(): Promise<Quote> {
     if (v) {
       return {
         source: "bcb-ptax",
-        maxAgeSecs: 6 * 3600,
         rate: (Number(v.cotacaoCompra) + Number(v.cotacaoVenda)) / 2,
         // "2026-10-09 13:07:30.746" is Brasília time (UTC-3).
         at: Math.floor(Date.parse(v.dataHoraCotacao.replace(" ", "T").slice(0, 19) + "-03:00") / 1000),

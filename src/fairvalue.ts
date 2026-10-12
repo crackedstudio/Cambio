@@ -15,9 +15,9 @@ export type Quote = {
   rate: number;
   /// Unix seconds when the source last updated.
   at: number;
-  /// How old this source may be before it is ignored. On-chain prices are
-  /// read live, so the default is short; published rates (dolarapi, PTAX)
-  /// update every few minutes to hours and set their own.
+  /// How old this source may be before it is ignored. Default: RISK's 15
+  /// minutes. Only Argentina's published rates (dolarapi) set a longer one —
+  /// they update about hourly, and without them wARS loses its anchor.
   maxAgeSecs?: number;
 };
 
