@@ -1,0 +1,6 @@
+.env
+state/*
+!state/.gitkeep
+stitch/stitch.toml
+stitch/stitch.env
+node_modules/

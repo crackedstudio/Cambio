@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "feed": "deno run --allow-net --allow-env --allow-read=state --allow-write=state --env-file=.env src/feed.ts",
+    "news": "deno run --allow-net --allow-env --allow-read --allow-write=state,stitch --allow-run --env-file=.env src/news.ts",
+    "ledger": "deno run --allow-net --allow-env --allow-read=state --allow-write=state --env-file=.env src/ledger.ts",
+    "check": "deno check src/*.ts && deno test --allow-read test/"
+  },
+  "imports": {
+    "viem": "npm:viem@2",
+    "viem/": "npm:/viem@2/",
+    "@x402/fetch": "npm:@x402/fetch@2.28.0",
+    "@x402/evm/exact/client": "npm:@x402/evm@2.28.0/exact/client",
+    "@std/assert": "jsr:@std/assert@1"
+  }
+}
