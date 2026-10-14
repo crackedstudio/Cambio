@@ -10,7 +10,7 @@ Type=simple
 User=cambio
 WorkingDirectory=/opt/cambio
 # Settings, plus the news payer's key (a few dollars). The MAKER key is never here:
-# it belongs to Stitch alone (/etc/stitch-bot/stitch.key).
+# it belongs to Stitch alone (pasted into its panel, kept in the bot container).
 EnvironmentFile=/opt/cambio/.env
 # Dependencies were cached by install.sh; run from that cache, never fetch,
 # never rewrite the lockfile.

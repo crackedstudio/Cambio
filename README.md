@@ -36,7 +36,7 @@ stablecoins on Celo with its own capital.
                                          │ posts
                                   src/news.ts ── regime: calm | elevated | shock
                                          │            │
-                         rewrites stitch.toml     state/regime.json
+                          patches stitch.toml     state/regime.json
                          (spread ×3, size ½)          │
                                          │            ▼
   Uniswap pool ┐                         │      src/feed.ts ──► /feed/wars-usdt
@@ -84,7 +84,7 @@ second process has to be alive for quoting to stop.
 - Scores posts with a weighted term list (Spanish for Argentina, Portuguese
   for Brazil), each post counted once so reposts cannot fake a crisis →
   `calm` (score < 12), `elevated` (≥ 12), `shock` (≥ 30).
-- **elevated**: spread ×3, size ½ (stitch.toml rewritten, Stitch restarted).
+- **elevated**: spread ×3, size ½ (stitch.toml patched, Stitch restarted).
   **shock**: the feed withholds the price.
 - Up is immediate; down only after an hour with no reading at that level.
 - Polls every 20 minutes when calm, every 5 when not. Every call is checked
@@ -113,11 +113,12 @@ cp .env.example .env            # fill MAKER_ADDRESS, NEWS_PAYER_KEY, budgets
 deno task check                 # typecheck + tests
 
 deno task feed                  # :8787 — /feed/wars-usdt, /feed/wbrl-usdt, /status
-deno task news                  # pays buy, sets the regime, writes stitch/stitch.toml
+deno task news                  # pays buy, sets the regime, patches the Stitch bot's config
 deno task ledger --watch        # P&L every 2 minutes
 
-# Stitch, pointed at the generated stitch/stitch.toml — install and run it
-# per its README (Permit2 approvals first: `stitch approve`, needs a little CELO).
+# Stitch runs from its own panel: Add corridor → Connect (verifies an email,
+# issues the maker key) → approve allowances. Cambio then sets five keys per
+# pool in the bot's stitch.toml and leaves the rest to the panel.
 ```
 
 **Deploying to a server:** follow [deploy/RUNBOOK.md](deploy/RUNBOOK.md), step by step.
@@ -145,12 +146,12 @@ below the balance — Textile's own advice is "start wide and small".
 
 ## Before going live — verify
 
-- [ ] The Celo wARS and wBRL corridors accept a new maker (ask Textile).
-- [ ] Stitch's TOML keys match `src/stitchconf.ts` for the version installed
-      (a misspelt key is silently ignored).
-- [ ] Run Stitch in **lean shadow** first and compare its quotes to `/status`.
-- [ ] `STITCH_RESTART_CMD` restarts Stitch (e.g. `systemctl restart stitch`):
-      Stitch reads its config only at startup.
+- [x] How a maker enrols and whether we can use a vault — Textile answered
+      14 Oct ([docs/textile-answers.md](docs/textile-answers.md)).
+- [ ] The wARS and wBRL corridors are in the panel's list for a new maker.
+- [ ] Run the bot in **`--dry-run`** first and compare its quotes to `/status`.
+- [ ] `STITCH_PULL_CMD` / `STITCH_RESTART_CMD` patch and restart the bot
+      (RUNBOOK step 6): Stitch reads its config only at startup.
 - [ ] ERC-8004 identity registered for the maker wallet.
 - [ ] Attribution: this project's own Loops tag (never Remesso's). Note what can
       and cannot carry it — x402 payments are submitted by the facilitator and
@@ -179,8 +180,8 @@ src/sources.ts      price sources
 src/fairvalue.ts    blend, outlier rejection, skew, Stitch orientation  (pure)
 src/regime.ts       posts → score → regime → effects                    (pure)
 src/feed.ts         the HTTP feed Stitch polls; the off switch
-src/news.ts         pays buy over x402, sets the regime, rewrites stitch.toml
-src/stitchconf.ts   renders stitch.toml
+src/news.ts         pays buy over x402, sets the regime, patches the bot's stitch.toml
+src/stitchconf.ts   patches the panel's stitch.toml (or renders one for a hand-run bot)
 src/ledger.ts       fills, edge, equity, data cost, daily loss halt
 src/state.ts        shared JSON state under state/
 src/alerts.ts       Telegram / webhook alerts, sent once per change
@@ -189,5 +190,5 @@ src/attribution.ts  ERC-8021 suffix for this project's own code
 scripts/register-8004.ts   ERC-8004 identity for the maker wallet
 deploy/             systemd units, installer, config-swap script, RUNBOOK.md
 docs/ROADMAP.md     status and what is left · docs/journal.md  daily trading notes
-test/               20 tests
+test/               26 tests, plus apply-stitch-config.test.sh (the root-side guard)
 ```

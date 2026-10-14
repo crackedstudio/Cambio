@@ -19,7 +19,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { CORRIDORS, type CorridorId } from "./config.ts";
 import { next, type Regime, regimeOf, type RegimeState, score } from "./regime.ts";
 import { appendSpend, readRegimes, readSpend, writeJson } from "./state.ts";
-import { renderStitch } from "./stitchconf.ts";
+import { patchStitch, renderStitch } from "./stitchconf.ts";
 import { alert } from "./alerts.ts";
 
 /// Paid sources on the buy gateway, both $0.005 a call (read from each 402).
@@ -68,7 +68,7 @@ const fixture = args.includes("--fixture") ? args[args.indexOf("--fixture") + 1]
 const maxPerCall = Number(Deno.env.get("NEWS_MAX_PER_CALL") ?? "0.01");
 const dailyBudget = Number(Deno.env.get("NEWS_DAILY_BUDGET") ?? "1.50");
 const asset = ASSETS[(Deno.env.get("NEWS_ASSET") ?? "USAT").toUpperCase()];
-const feedBase = Deno.env.get("FEED_PUBLIC_URL") ?? `http://127.0.0.1:${Deno.env.get("FEED_PORT") ?? 8787}`;
+const feedBase = (Deno.env.get("FEED_PUBLIC_URL") || "").replace(/\/+$/, "") || `http://127.0.0.1:${Deno.env.get("FEED_PORT") ?? 8787}`;
 
 /// Any string under a key that looks like post text. The gateway's response
 /// shape belongs to its provider and can change; walking it beats binding to
@@ -203,19 +203,55 @@ async function poll(pay: typeof fetch | null): Promise<Regime> {
   const missing = await Deno.stat("stitch/stitch.toml").then(() => false, () => true);
   if (changed || missing) {
     const flat = Object.fromEntries(Object.entries(regimes).map(([k, v]) => [k, v!.regime]));
-    const existing = await Deno.readTextFile("stitch/stitch.toml").catch(() => "");
-    await Deno.writeTextFile("stitch/stitch.toml", renderStitch(flat, feedBase, existing));
-    const cmd = (Deno.env.get("STITCH_RESTART_CMD") ?? "").trim();
-    if (cmd) {
-      const out = await new Deno.Command("sh", { args: ["-c", cmd] }).output();
-      console.log(`stitch restart: exit ${out.code}`);
-    } else {
-      console.log("stitch.toml rewritten; STITCH_RESTART_CMD is empty, so restart Stitch yourself");
-    }
+    await applyToStitch(flat, feedBase);
   }
 
   const rank = { calm: 0, elevated: 1, shock: 2 } as const;
   return Object.values(regimes).reduce<Regime>((w, r) => (r && rank[r.regime] > rank[w] ? r.regime : w), "calm");
+}
+
+/// Put the regimes into Stitch's config and restart the bot.
+///
+/// With the panel (the normal setup), the panel owns the bot's stitch.toml:
+/// STITCH_PULL_CMD copies the live file to stitch/live.toml, Cambio patches
+/// only its own keys into stitch/stitch.toml, and STITCH_RESTART_CMD installs
+/// it — refusing if the panel changed the file in between — and restarts the
+/// bot. Without a pull command, the whole file is generated (bot set up by
+/// hand). Either command empty = write the file and tell the operator.
+async function applyToStitch(regimes: Partial<Record<CorridorId, Regime>>, feedBase: string) {
+  const sh = async (name: string) => {
+    const cmd = (Deno.env.get(name) ?? "").trim();
+    if (!cmd) return null;
+    const out = await new Deno.Command("sh", { args: ["-c", cmd] }).output();
+    const say = new TextDecoder().decode(out.stderr).trim() || new TextDecoder().decode(out.stdout).trim();
+    console.log(`${name}: exit ${out.code}${say ? ` — ${say}` : ""}`);
+    return out.code;
+  };
+
+  const pulled = await sh("STITCH_PULL_CMD");
+  if (pulled !== null && pulled !== 0) {
+    // Never fall back to generating a whole file over the panel's.
+    await alert("stitch", "stitch:pull", `fail:${pulled}`, `Could not read the bot's config (exit ${pulled}); regime change NOT applied. The feed still enforces shock.`);
+    return;
+  }
+  const live = pulled === 0 ? await Deno.readTextFile("stitch/live.toml").catch(() => "") : "";
+  let text: string;
+  if (/^\s*\[\[pools\]\]/m.test(live)) {
+    const { text: patched, report } = patchStitch(live, regimes, feedBase);
+    text = patched;
+    console.log(`stitch.toml patched: ${report.patched.join(", ") || "no pools"}${report.missing.length ? `; not in the bot: ${report.missing.join(", ")} (add the corridor in the panel)` : ""}`);
+    for (const w of report.warnings) {
+      console.warn(`stitch.toml: ${w}`);
+      await alert("stitch", `stitch:warn:${w.split(":")[0]}`, w, `Stitch config: ${w}`).catch(() => {});
+    }
+  } else {
+    const existing = await Deno.readTextFile("stitch/stitch.toml").catch(() => "");
+    text = renderStitch(regimes, feedBase, existing);
+  }
+  await Deno.writeTextFile("stitch/stitch.toml", text);
+  if ((await sh("STITCH_RESTART_CMD")) === null) {
+    console.log("stitch/stitch.toml written; STITCH_RESTART_CMD is empty, so install it and restart Stitch yourself");
+  }
 }
 
 if (import.meta.main) {

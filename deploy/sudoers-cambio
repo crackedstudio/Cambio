@@ -1,3 +1,4 @@
-# /etc/sudoers.d/cambio — lets the news agent swap Stitch's config, nothing more.
+# /etc/sudoers.d/cambio — lets the news agent read and swap the Stitch bot's
+# config, nothing more. Arguments are fixed: "pull" or "install", no others.
 # Install: sudo install -m 0440 deploy/sudoers-cambio /etc/sudoers.d/cambio && sudo visudo -c
-cambio ALL=(root) NOPASSWD: /opt/cambio/deploy/apply-stitch-config.sh
+cambio ALL=(root) NOPASSWD: /opt/cambio/deploy/apply-stitch-config.sh pull, /opt/cambio/deploy/apply-stitch-config.sh install

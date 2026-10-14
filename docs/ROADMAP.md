@@ -5,7 +5,7 @@ Update this file as items move; it is the team's single source of truth.
 
 **Deadline:** Mon **9 Nov 2026, 09:00 GMT** (Agents on Open Rails, Loops House).
 **Tracks:** Open Corridors: **Textile FX** ($750 / $250) · **Build with buy** ($200 × 5).
-**Last updated:** 12 Oct 2026 (evening). **Server steps:** follow [deploy/RUNBOOK.md](../deploy/RUNBOOK.md).
+**Last updated:** 14 Oct 2026. **Server steps:** follow [deploy/RUNBOOK.md](../deploy/RUNBOOK.md).
 
 Legend: ✅ done and verified · 🟡 built, not yet run live · ⬜ not started ·
 👤 needs a team member (keys, money, accounts) · 🤖 can be built in code
@@ -36,16 +36,17 @@ Bounty wording to satisfy literally:
 | Fair-value engine | ✅ built, tested, run live (no money) |
 | Price feed for Stitch (incl. off switch) | ✅ built, run live (no money) |
 | News risk agent (buy, x402) | 🟡 built and dry-run on fixtures; **no paid call yet** |
-| Stitch config generator | ✅ built, tested; keys not yet checked against an installed Stitch |
+| Stitch config — **patches the panel's file** (5 keys per pool), root-side guard | ✅ built, tested (sandbox + live-shaped fixture) |
 | P&L ledger + daily loss halt | ✅ built, verified on a real Celo fill (another maker's) |
-| Stitch config matched to Stitch's source (`[rfq]` carried over) | ✅ code · ⬜ 👤 dry-run on the server |
+| Matched to Stitch @ 109ed6e (panel, Docker, Connect, vaults) | ✅ code · ⬜ 👤 dry-run on the server |
+| Textile vault support (fills, equity, skew follow the vault) | ✅ code, ledger run on real fills · ⬜ optional, beta |
 | Alerts (Telegram / webhook) | ✅ code, tested · ⬜ 👤 bot token + test alert |
 | Reddit as a second paid source | ✅ code · off until `NEWS_SOURCES=x,reddit` |
 | Dashboard (`/dashboard`) | ✅ code, rendered on sample data · ⬜ live URL |
 | Server deployment (systemd, installer, runbook) | ✅ code · ⬜ 👤 run on a VPS |
 | ERC-8004 registration script, attribution encoder | ✅ code, dry-run · ⬜ 👤 key + Loops code |
 | Accounts, wallets, capital | ⬜ 👤 |
-| Stitch installed and enrolled on Celo | ⬜ 👤 (`stitch connect`) |
+| Stitch installed and enrolled on Celo | ⬜ 👤 panel wizard → Connect → verify email ([answers](textile-answers.md)) |
 | Live quoting | ⬜ |
 | Demo video, submission | ⬜ 👤 |
 
@@ -112,6 +113,38 @@ running it on the server with the team's keys:
   Brazil's included, keeps 15 minutes.
 - 20 tests.
 
+### Built 14 Oct — Stitch's panel, Textile's answers, vaults
+
+Textile answered roadmap 0.2 ([textile-answers.md](textile-answers.md)), and
+Stitch had moved on since @ 29f006e: a web panel in Docker now owns each bot's
+`stitch.toml`. What changed in Cambio:
+
+- **Patch, don't generate.** `patchStitch` sets five keys in each wARS/wBRL
+  pool and leaves every other line — including panel keys Cambio has never
+  seen (`corridor_id`, `[vault]`, `modules_enabled`) — exactly as written.
+  Idempotent; reports corridors missing from the bot and settings that fight
+  Cambio (`lean_enabled`, `book_enabled`, no `[rfq]`). 5 new tests.
+- **`apply-stitch-config.sh pull|install`** for the panel's container
+  `stitch-<id>`. Install refuses unless every non-Cambio line equals the live
+  file and every new `feed_url` is ours, refuses if the panel saved since the
+  pull, works on root's own copies (no symlink tricks), and rolls back if the
+  bot does not stay up. `test/apply-stitch-config.test.sh`: 9 checks.
+- **Fixed before it bit:** the news service's `ProtectSystem=strict` also
+  binds the root script it starts — it could not have written the bot's
+  config at all. Now granted exactly `/srv/stitch/bots` and
+  `/var/lib/cambio-stitch`. And an empty `FEED_PUBLIC_URL=` would have written
+  `feed_url = "/feed/…"`.
+- **Vaults:** `VAULT_<CORRIDOR>` per corridor; the ledger counts fills where
+  the swapper is the bot wallet or a vault, equity sums both, the skew reads
+  the vault. Run on two real Celo makers' fills from the reactor today:
+  3 corridor fills, $300 volume, edges −$0.11, −$0.10, −$0.04 (other makers'
+  — evidence the method works, not our P&L); two non-corridor fills
+  (USDT/CELO and another pair) correctly ignored.
+- Stitch facts that shape the design: a feed error clears the bot's RFQ
+  price at once (our 503 is an instant stop); feed timestamps must be whole
+  seconds and never ahead of the bot's clock (ours already are); RFQ marks
+  older than min(60 s, `[feed].staleness_secs`) are refused for a custom feed.
+
 ### Facts established (each would have cost money)
 1. wARS tracks the **crypto/CCL dollar (~1,605)**, not the official rate (~1,512) — 6% apart.
 2. Stitch's feed price is **debt per collateral** (≈0.000623), not 1,602.
@@ -126,7 +159,7 @@ running it on the server with the team's keys:
 | # | Task | Owner | Done when |
 |---|---|---|---|
 | 0.1 | Submitter enrolls in Agents on Open Rails (`npx loopshouse add agents-on-open-rails`, then enroll). **Must not be on Remesso's Loops team.** | 👤 submitter | `loops auth status` shows them; they have their own attribution tag |
-| 0.2 | Ask Textile (Telegram / office hours) whether the Celo **wARS** and **wBRL** corridors accept a new maker, how makers enrol, and how fills are credited to a project | 👤 | Written answer saved in `docs/textile-answers.md` |
+| 0.2 | ✅ 14 Oct · Ask Textile how makers enrol and about vaults — answered: the panel wizard issues the maker key after an email check; vaults deploy at app.textilecredit.com, beta. **Still open:** fill credit for the hackathon | 👤 | [docs/textile-answers.md](textile-answers.md) |
 | 0.3 | Create the **maker wallet** (new key, never used by Remesso) | 👤 | Address in `.env` as `MAKER_ADDRESS`; key only in `stitch/stitch.env` |
 | 0.4 | Create the **news-payer wallet** (separate key) | 👤 | `NEWS_PAYER_KEY` in `.env` |
 | 0.5 | Fund the maker: ~$150 USDT + ~$150 of wARS (buy via the Uniswap pool or Ripio) + ~0.5 CELO. **Team's own money, not from Remesso wallets.** | 👤 | Balances visible on Celoscan |
@@ -136,10 +169,10 @@ running it on the server with the team's keys:
 
 | # | Task | Owner | Done when |
 |---|---|---|---|
-| 1.1 | Rent a small VPS (always on); install Deno and Stitch | 👤 | `deno --version`, `stitch --version` on the box |
+| 1.1 | Rent a small VPS (always on); install Deno, Docker and Stitch's panel (Tailscale) | 👤 | `deno --version`; panel opens over Tailscale |
 | 1.2 | ✅ code · Run `deno task feed` on the VPS behind a process supervisor (systemd) | 🤖 unit files + 👤 install | `/status` reachable from Stitch; restarts on crash |
-| 1.3 | ✅ code · **Check Stitch's TOML keys** against the installed version's `stitch.example.toml`; fix `src/stitchconf.ts` if any differ | 🤖 | Stitch starts with our generated config and logs no unknown keys |
-| 1.4 | ✅ code · Set `STITCH_RESTART_CMD` (e.g. `systemctl restart stitch`) | 👤 | A forced regime change restarts Stitch |
+| 1.3 | ✅ code · Cambio **patches** the panel's `stitch.toml` instead of generating it; checked against textile-stitch @ 109ed6e | 🤖 | `cx news --once --fixture …` prints `patched: wars-usdt` and the panel shows Cambio's offsets |
+| 1.4 | ✅ code · `STITCH_PULL_CMD` / `STITCH_RESTART_CMD` = `apply-stitch-config.sh pull` / `install` (RUNBOOK step 6) | 👤 | A forced regime change restarts `stitch-<id>` |
 | 1.5 | Run Stitch with **`--dry-run`** on wARS; compare its intended quotes with `/status` for 24h | 👤 + 🤖 | Quotes sit at fair ± offset; no inverted prices |
 | 1.6 | First **real paid buy call** (`deno task news --once`) | 👤 | A line in `state/spend.jsonl` with a receipt tx hash on Celoscan |
 
@@ -161,6 +194,7 @@ running it on the server with the team's keys:
 | 3.2 | Add **wBRL** live (approvals, then quoting) | 👤 | wBRL fills in the ledger |
 | 3.3 | Tune news weights and thresholds from `spend.jsonl` vs the fills that followed | 🤖 | Changes justified by logged data, committed with the evidence |
 | 3.4 | ✅ code · Add **Reddit search** (`reddit.posts.search`, $0.005) as a second paid source if X alone misses events | 🤖 | Second capability in the spend log |
+| 3.6 | Optional, beta: trade from a **Textile vault** — deploy, connect in the panel (Experimental), `VAULT_WARS_USDT` (RUNBOOK step 9). No yield adapter while judged | 👤 | Next fill's swapper is the vault; ledger still counts the bot wallet's earlier fills |
 | 3.5 | Optional: a short model classifier for the ambiguous middle scores, keyword scorer kept as the floor | 🤖 | Only if 3.3 shows keyword misses |
 
 ### Phase 4 — evidence and submission · target **7 Nov** (2 days' margin)
@@ -207,7 +241,8 @@ Bounty ids for 4.6: Textile FX 1st `f47e6f01-94c0-467b-afb9-8c004f0bae13`, 2nd `
 ## Commands
 
 ```bash
-deno task check                                          # typecheck + 14 tests
+deno task check                                          # typecheck + 26 tests
+sh test/apply-stitch-config.test.sh                      # the root-side config guard, 9 checks
 deno task feed                                           # price feed on :8787
 curl localhost:8787/status                               # what the feed believes and why
 deno task news --once --fixture test/fixtures/shock.json # dry run, pays nothing

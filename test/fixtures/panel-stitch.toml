@@ -1,0 +1,46 @@
+# Shaped like a file the Stitch panel writes: wizard, Connect, then a vault.
+modules_enabled = false
+
+chain_id = 42220
+rpc_url = "https://forno.celo.org"
+indexer_url = "https://api.textilecredit.com"
+permit2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+reactor = "0xa9AA0a64aD1e9eB7b8aD4e0e0E4c6e1f1aBc35b3"
+tick_interval_secs = 5
+book_enabled = false
+
+[feed]
+url = "https://api.textilecredit.com/price?pair=wars-usdt"
+staleness_secs = 900
+
+[[pools]]
+corridor_id = "cmb3k1x0000wars"
+corridor_name = "wARS / USDT"
+corridor_network = "Celo"
+collateral = "0x0dc4f92879b7670e5f4e4e6e3c801d229129d90d"
+collateral_decimals = 18
+debt = "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e"
+debt_decimals = 6
+buy_offset_abs = 2.0
+buy_total_liquidity_debt = "max"
+buy_min_slice_debt = "10000000"
+buy_max_orders = 40
+sell_offset_bps = 150  # the wizard's default
+sell_total_liquidity_collateral = "max"
+ttl_secs = 120
+
+[[pools]]
+collateral = "0x1111111111111111111111111111111111111111"
+collateral_decimals = 6
+debt = "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e"
+debt_decimals = 6
+buy_offset_bps = 77
+
+[rfq]
+enabled = true
+url = "wss://api.textilecredit.com/v2/maker/stream"
+maker_id = "mk_panel"
+api_key_env = "STITCH_RFQ_API_KEY"
+
+[vault]
+address = "0x2222222222222222222222222222222222222222"

@@ -9,7 +9,7 @@
 import { readJson, readRegimes, readSpend } from "./state.ts";
 
 type Pnl = {
-  asOf: string; maker: string; fills: number; volumeFilledUsd: number; edgeUsd: number;
+  asOf: string; wallets: string[]; fills: number; volumeFilledUsd: number; edgeUsd: number;
   dataCostUsd: number; equityUsd: number; baselineEquityUsd: number; totalPnlUsd: number; dayPnlUsd: number;
   recentFills: Array<{ tx: string; corridor: string; side: string; usdt: number; local: number; rate: number; poolRate: number | null; edgeUsd: number | null }>;
 };
@@ -114,7 +114,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;p
 svg{width:100%;height:auto}ul{padding-left:18px}li{margin:6px 0}code{font-size:13px}
 </style></head><body><main>
 <h1>Cambio</h1>
-<p class="muted">News-aware market maker for LatAm stablecoins on Celo · Textile FX · maker ${esc(p?.maker ?? "—")} · ${esc(p?.asOf ?? "")}</p>
+<p class="muted">News-aware market maker for LatAm stablecoins on Celo · Textile FX · ${p?.wallets?.length ? p.wallets.map(esc).join(" + ") : "—"} · ${esc(p?.asOf ?? "")}</p>
 <div class="tiles">${tiles.map(([k, v, s]) => `<div class="tile"><span class="muted">${esc(k)}</span><b>${esc(v)}</b><span class="muted">${esc(s)}</span></div>`).join("")}</div>
 <h2>Equity</h2><div class="card">${curve(d.equity)}</div>
 <h2>Feeds right now</h2><div class="card"><table><tr><th>Corridor</th><th>Regime</th><th>Stitch</th><th>Fair (local/USD)</th><th>Sources</th></tr>${corridors || `<tr><td colspan="5" class="muted">feed status unavailable</td></tr>`}</table></div>

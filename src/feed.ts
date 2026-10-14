@@ -13,7 +13,7 @@
 /// Pulling quotes needs no restart and no second process to be alive: a feed
 /// that cannot vouch for a price simply does not publish one.
 
-import { CORRIDORS, type CorridorId } from "./config.ts";
+import { CORRIDORS, type CorridorId, fundingOf } from "./config.ts";
 import { fairValue, skew, toStitchPrice } from "./fairvalue.ts";
 import { inventory } from "./inventory.ts";
 import { EFFECTS } from "./regime.ts";
@@ -22,7 +22,6 @@ import { readHalt, readRegimes } from "./state.ts";
 import { alert } from "./alerts.ts";
 import { dashboardData, dashboardHtml } from "./dashboard.ts";
 
-const MAKER = (Deno.env.get("MAKER_ADDRESS") ?? "") as `0x${string}`;
 const PORT = Number(Deno.env.get("FEED_PORT") ?? 8787);
 
 /// Sources are polled at most every 10s per corridor; Stitch may poll faster.
@@ -45,9 +44,11 @@ async function price(id: CorridorId) {
 
   if (publish && fv.ok) {
     let localShare = 0.5;
-    if (/^0x[0-9a-fA-F]{40}$/.test(MAKER)) {
+    // The vault's inventory when this corridor trades from one, else the bot's.
+    const funding = fundingOf(id);
+    if (funding) {
       try {
-        const inv = await inventory(MAKER, c, fv.rate);
+        const inv = await inventory(funding, c, fv.rate);
         localShare = inv.localShare;
         body.inventory = inv;
       } catch (e) {

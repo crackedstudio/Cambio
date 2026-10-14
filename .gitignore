@@ -2,6 +2,7 @@
 state/*
 !state/.gitkeep
 stitch/stitch.toml
+stitch/live.toml
 stitch/stitch.env
 node_modules/
 .deno/

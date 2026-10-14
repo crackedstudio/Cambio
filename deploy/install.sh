@@ -1,7 +1,7 @@
 #!/bin/sh
 # One-time server setup for Cambio (Ubuntu/Debian, as root). Idempotent.
-# Stitch itself is installed separately, per Textile's docs/install-server.md
-# and deploy/stitch.service in the textile-stitch repo.
+# Stitch itself is installed separately, with its panel (Textile's
+# docs/install-server.md) — see deploy/RUNBOOK.md steps 5–6.
 set -eu
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 
@@ -18,6 +18,8 @@ chmod 600 /opt/cambio/.env && chown cambio:cambio /opt/cambio/.env
 # not writable by "cambio", or the sudo rule would hand out root.
 chown root:root /opt/cambio/deploy/apply-stitch-config.sh && chmod 0755 /opt/cambio/deploy/apply-stitch-config.sh
 install -m 0440 /opt/cambio/deploy/sudoers-cambio /etc/sudoers.d/cambio && visudo -c
+# Where that script records what it pulled — root's, so "cambio" cannot forge it.
+install -d -m 0700 -o root -g root /var/lib/cambio-stitch
 
 # Cache dependencies as the service user so first start is not a download.
 mkdir -p /opt/cambio/.deno && chown cambio:cambio /opt/cambio/.deno

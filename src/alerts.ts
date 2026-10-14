@@ -14,7 +14,7 @@
 
 import { readJson, writeJson } from "./state.ts";
 
-export type AlertEvent = "feed-down" | "feed-up" | "regime" | "halt" | "test";
+export type AlertEvent = "feed-down" | "feed-up" | "regime" | "halt" | "stitch" | "test";
 
 export async function alert(event: AlertEvent, key: string, value: string, text: string): Promise<boolean> {
   const last = await readJson<Record<string, string>>("alerts.json", {});

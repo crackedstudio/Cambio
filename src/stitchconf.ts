@@ -1,4 +1,13 @@
-/// Render `stitch/stitch.toml` from the corridors and the current regimes.
+/// Cambio's hand on Stitch's config. Two ways in:
+///
+/// - `patchStitch` — the normal path since Stitch grew a panel (textile-stitch
+///   @ 109ed6e, 13 Oct 2026). The panel's Add-corridor wizard writes the file,
+///   Connect adds `[rfq]` and the maker key, and Experimental → Trade from a
+///   vault adds `[vault]`. Cambio then changes ONLY the keys it owns in the
+///   pools it serves and leaves every other line as the panel wrote it —
+///   including keys this code has never heard of.
+/// - `renderStitch` — a whole file from nothing, for a bot set up by hand
+///   without the panel.
 ///
 /// Stitch reads its config only at startup (its ADVANCED.md: "restart the
 /// process after any change"), so a regime change is: rewrite this file, then
@@ -93,4 +102,110 @@ ${pools.join("")}${(() => {
       ? `\n# ---- Carried over from the previous stitch.toml (written by \`stitch connect\` / the operator).\n${kept}\n`
       : `\n# No [rfq] table yet: run \`stitch connect --config <this file>\` once to enrol the maker.\n# Until then Stitch starts but serves no Swap quotes.\n`;
   })()}`;
+}
+
+/// The keys Cambio sets in each pool it serves. Everything else in the file
+/// belongs to the panel or the operator.
+export const OWNED_POOL_KEYS = [
+  "feed_url",
+  "buy_offset_bps",
+  "sell_offset_bps",
+  "buy_total_liquidity_debt",
+  "sell_total_liquidity_collateral",
+] as const;
+
+export type PatchReport = {
+  /// Corridors whose pool was found and set.
+  patched: CorridorId[];
+  /// Corridors Cambio serves with no pool in the file: add them in the panel.
+  missing: CorridorId[];
+  /// Settings that fight Cambio's own, said once per patch.
+  warnings: string[];
+};
+
+/// What Cambio wants in one corridor's pool under a regime.
+export function poolValues(id: CorridorId, regime: Regime, feedBase: string): Record<(typeof OWNED_POOL_KEYS)[number], string> {
+  const c = CORRIDORS[id];
+  const fx = EFFECTS[regime];
+  const offset = Math.round(c.baseOffsetBps * fx.offsetMultiplier);
+  return {
+    feed_url: `"${feedBase}/feed/${id}"`,
+    buy_offset_bps: String(offset),
+    sell_offset_bps: String(offset),
+    // 1-unit floor in shock: the feed's 503 is what stops quoting.
+    buy_total_liquidity_debt: `"${atomic(Math.max(c.buyCapUsdt * fx.liquidityShare, 1), USDT.decimals)}"`,
+    sell_total_liquidity_collateral: `"${atomic(Math.max(c.sellCapLocal * fx.liquidityShare, 1), c.token.decimals)}"`,
+  };
+}
+
+const HEADER = /^\s*\[\[?[^\]]+\]\]?\s*(#.*)?$/;
+const keyLine = (k: string) => new RegExp(`^\\s*${k}\\s*=`);
+const root = (text: string, k: string) => {
+  // Root keys sit above the first table header.
+  const first = text.split("\n").findIndex((l) => HEADER.test(l));
+  const head = (first < 0 ? text.split("\n") : text.split("\n").slice(0, first)).join("\n");
+  return head.match(new RegExp(`^\\s*${k}\\s*=\\s*(\\S+)`, "m"))?.[1];
+};
+
+/// Set Cambio's keys in the pools of an existing stitch.toml, touching no
+/// other line. A pool is Cambio's when its `collateral` is a corridor token.
+/// A key already present is replaced in place (its trailing comment is lost,
+/// the line is not); one absent is added at the end of the pool's own lines.
+export function patchStitch(
+  existing: string,
+  regimes: Partial<Record<CorridorId, Regime>>,
+  feedBase: string,
+): { text: string; report: PatchReport } {
+  const lines = existing.split("\n");
+  const byToken = new Map((Object.keys(CORRIDORS) as CorridorId[]).map((id) => [CORRIDORS[id].token.address.toLowerCase(), id]));
+  const found = new Set<CorridorId>();
+
+  // Section boundaries: [start, end) per header, end = next header.
+  const starts = lines.flatMap((l, i) => (HEADER.test(l) ? [i] : []));
+  const out = [...lines];
+  // Walk backwards so insertions do not shift the sections still to come.
+  for (let n = starts.length - 1; n >= 0; n--) {
+    const start = starts[n];
+    if (!/^\s*\[\[pools\]\]/.test(lines[start])) continue;
+    const end = n + 1 < starts.length ? starts[n + 1] : lines.length;
+    const body = lines.slice(start + 1, end);
+    const coll = body.map((l) => l.match(/^\s*collateral\s*=\s*"(0x[0-9a-fA-F]{40})"/)?.[1]).find(Boolean);
+    const id = coll ? byToken.get(coll.toLowerCase()) : undefined;
+    if (!id) continue;
+    found.add(id);
+
+    const want = poolValues(id, regimes[id] ?? "calm", feedBase);
+    const section = [...body];
+    const add: string[] = [];
+    for (const k of OWNED_POOL_KEYS) {
+      const i = section.findIndex((l) => keyLine(k).test(l));
+      const line = `${k} = ${want[k]}`;
+      if (i >= 0) section[i] = line;
+      else add.push(line);
+    }
+    if (add.length) {
+      // After the pool's last non-blank line, before the gap to the next table.
+      let last = section.length - 1;
+      while (last >= 0 && section[last].trim() === "") last--;
+      // No regime in the comment: it is written once and would go stale.
+      section.splice(last + 1, 0, "# set by Cambio (src/stitchconf.ts): feed, spreads and caps follow the news regime", ...add);
+    }
+    out.splice(start + 1, end - start - 1, ...section);
+  }
+
+  const all = Object.keys(CORRIDORS) as CorridorId[];
+  const warnings: string[] = [];
+  if (/^\s*lean_enabled\s*=\s*true/m.test(existing)) {
+    warnings.push("lean_enabled = true: Stitch leans on inventory and Cambio already skews the feed — the two double up. Turn lean off in the panel.");
+  }
+  if (root(existing, "book_enabled") === "true") {
+    warnings.push("book_enabled = true: a public ladder runs beside RFQ and quotes the same inventory. Cambio's caps assume RFQ only.");
+  }
+  if (!/^\s*\[rfq\]/m.test(existing)) {
+    warnings.push("no [rfq] table: the bot is not connected to Textile and quotes nothing on Swap. Connect it in the panel.");
+  }
+  return {
+    text: out.join("\n"),
+    report: { patched: all.filter((id) => found.has(id)), missing: all.filter((id) => !found.has(id)), warnings },
+  };
 }

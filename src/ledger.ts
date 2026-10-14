@@ -4,8 +4,10 @@
 ///   deno task ledger --watch    # every 2 minutes
 ///
 /// A fill is a UniswapX `Fill(orderHash, filler, swapper, nonce)` on Textile's
-/// reactor where `swapper` is our maker (verified on Celo 2026-10-12). Its
-/// amounts are the token transfers to and from the maker in that transaction.
+/// reactor where `swapper` is one of ours (verified on Celo 2026-10-12) — the
+/// bot wallet, or a Textile vault it trades from (`makerWallets()`). Its
+/// amounts are the token transfers to and from THAT swapper in that
+/// transaction.
 ///
 /// Three numbers, kept apart because they answer different questions:
 ///   - **edge**: each fill valued against the Uniswap pool's price AT THAT
@@ -20,12 +22,12 @@
 ///     inventory moving with the peso, which edge alone hides.
 
 import { createPublicClient, http, parseAbi, parseAbiItem } from "viem";
-import { CORRIDORS, type Corridor, RISK, RPC, TEXTILE, UNISWAP_QUOTER, USDT } from "./config.ts";
+import { CORRIDORS, type Corridor, makerWallets, RISK, RPC, TEXTILE, UNISWAP_QUOTER, USDT } from "./config.ts";
 import { readJson, readSpend, writeJson } from "./state.ts";
 import { alert } from "./alerts.ts";
 
 const pub = createPublicClient({ transport: http(RPC) });
-const MAKER = (Deno.env.get("MAKER_ADDRESS") ?? "").toLowerCase() as `0x${string}`;
+const WALLETS = makerWallets();
 const START_BLOCK = BigInt(Deno.env.get("LEDGER_START_BLOCK") ?? "0");
 const CHUNK = 5000n; // forno's eth_getLogs range limit
 
@@ -68,9 +70,10 @@ async function poolRate(c: Corridor, block: bigint): Promise<number | null> {
 }
 
 async function fillsIn(from: bigint, to: bigint): Promise<FillRow[]> {
-  const logs = await pub.getLogs({ address: TEXTILE.reactor, event: FILL, args: { swapper: MAKER }, fromBlock: from, toBlock: to });
+  const logs = await pub.getLogs({ address: TEXTILE.reactor, event: FILL, args: { swapper: WALLETS }, fromBlock: from, toBlock: to });
   const rows: FillRow[] = [];
   for (const log of logs) {
+    const MAKER = log.args.swapper!.toLowerCase();
     const rc = await pub.getTransactionReceipt({ hash: log.transactionHash! });
     let usdtIn = 0n, usdtOut = 0n, localIn = 0n, localOut = 0n;
     let c: Corridor | undefined;
@@ -111,19 +114,27 @@ async function fillsIn(from: bigint, to: bigint): Promise<FillRow[]> {
   return rows;
 }
 
+/// Idle balances of every wallet of ours. A yield-enabled vault also holds a
+/// staked position in its adapter, which this does not see — so run without
+/// yield while the P&L is being judged, or equity reads low.
 async function equityUsd(): Promise<number> {
-  const usdt = Number(await pub.readContract({ address: USDT.address, abi: erc20, functionName: "balanceOf", args: [MAKER] })) / 10 ** USDT.decimals;
-  let total = usdt;
-  for (const c of Object.values(CORRIDORS)) {
-    const bal = Number(await pub.readContract({ address: c.token.address, abi: erc20, functionName: "balanceOf", args: [MAKER] })) / 10 ** c.token.decimals;
-    const pr = await poolRate(c, await pub.getBlockNumber());
-    if (bal > 0 && pr) total += bal / pr;
+  const block = await pub.getBlockNumber();
+  const rates = new Map<string, number | null>();
+  for (const c of Object.values(CORRIDORS)) rates.set(c.id, await poolRate(c, block));
+  let total = 0;
+  for (const w of WALLETS) {
+    total += Number(await pub.readContract({ address: USDT.address, abi: erc20, functionName: "balanceOf", args: [w] })) / 10 ** USDT.decimals;
+    for (const c of Object.values(CORRIDORS)) {
+      const bal = Number(await pub.readContract({ address: c.token.address, abi: erc20, functionName: "balanceOf", args: [w] })) / 10 ** c.token.decimals;
+      const pr = rates.get(c.id);
+      if (bal > 0 && pr) total += bal / pr;
+    }
   }
   return total;
 }
 
 async function run() {
-  if (!/^0x[0-9a-f]{40}$/.test(MAKER)) throw new Error("MAKER_ADDRESS is not set");
+  if (!WALLETS.length) throw new Error("MAKER_ADDRESS is not set (nor any VAULT_*)");
   const st = await readJson<LedgerState>("ledger.json", { cursor: START_BLOCK.toString(), fills: [], baseline: null });
   const head = await pub.getBlockNumber();
   let from = BigInt(st.cursor) || head - CHUNK;
@@ -155,7 +166,7 @@ async function run() {
 
   const pnl = {
     asOf: new Date().toISOString(),
-    maker: MAKER,
+    wallets: WALLETS,
     fills: st.fills.length,
     volumeFilledUsd: Math.round(volume * 100) / 100,
     edgeUsd: Math.round(edge * 1e4) / 1e4,
